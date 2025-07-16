@@ -1,15 +1,24 @@
 {
   "name": "weave-tool",
   "version": "1.0.0",
-  "main": "main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "npm run build && electron .",
+    "dev": "tsc --watch & electron .",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "electron": "^37.2.2"
+    "@types/electron": "^1.4.38",
+    "@types/node": "^24.0.14",
+    "electron": "^37.2.2",
+    "ts-node": "^10.9.2",
+    "typescript": "5.8"
   }
 }
