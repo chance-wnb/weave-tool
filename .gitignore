@@ -1,5 +1,6 @@
 # TypeScript build output
 dist/
+dist-renderer/
 *.tsbuildinfo
 
 # Dependencies

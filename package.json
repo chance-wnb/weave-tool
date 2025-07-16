@@ -5,11 +5,14 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "build:watch": "tsc --watch",
-    "start": "npm run build && electron .",
-    "dev": "tsc --watch & electron .",
-    "clean": "rm -rf dist",
-    "rebuild": "npm run clean && npm run build",
+    "build:renderer": "vite build",
+    "build:all": "npm run build && npm run build:renderer",
+    "dev:renderer": "vite",
+    "dev:main": "tsc --watch",
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
+    "start": "npm run build:all && electron .",
+    "clean": "rm -rf dist dist-renderer",
+    "rebuild": "npm run clean && npm run build:all",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -18,8 +21,20 @@
   "devDependencies": {
     "@types/electron": "^1.4.38",
     "@types/node": "^24.0.14",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "concurrently": "^9.2.0",
     "electron": "^37.2.2",
     "ts-node": "^10.9.2",
-    "typescript": "5.8"
+    "typescript": "5.8",
+    "vite": "^7.0.4",
+    "wait-on": "^8.0.3"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.0.0",
+    "antd": "^5.26.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   }
 }

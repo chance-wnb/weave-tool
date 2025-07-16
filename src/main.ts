@@ -8,16 +8,31 @@ const __dirname = dirname(__filename);
 
 const createWindow = (): void => {
   const win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       // preload: join(__dirname, 'preload.js') // Uncomment when you add preload
-    }
+    },
+    titleBarStyle: 'hiddenInset', // Better macOS integration
+    show: false, // Don't show until ready
   });
 
-  win.loadFile('index.html');
+  // Load from development server in dev mode, or built files in production
+  const isDev = process.env.NODE_ENV === 'development';
+  
+  if (isDev) {
+    win.loadURL('http://localhost:3000');
+    // win.webContents.openDevTools(); // Uncomment for debugging
+  } else {
+    win.loadFile(join(__dirname, '../dist-renderer/index.html'));
+  }
+
+  // Show window when ready to prevent visual flash
+  win.once('ready-to-show', () => {
+    win.show();
+  });
 };
 
 app.whenReady().then((): void => {
