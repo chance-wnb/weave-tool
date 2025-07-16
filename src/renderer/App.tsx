@@ -1,20 +1,14 @@
-import React, { useState } from 'react';
 import {
-  ChartBarIcon,
-  Cog6ToothIcon,
-  DocumentTextIcon,
-  UserIcon,
-  WrenchScrewdriverIcon,
   Bars3Icon,
-  XMarkIcon,
+  ChartBarIcon,
+  CommandLineIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
+import React, { useState } from 'react';
 
 // Import page components
 import Dashboard from './pages/Dashboard';
-import FileManager from './pages/FileManager';
-import Settings from './pages/Settings';
-import UserProfile from './pages/UserProfile';
-import Tools from './pages/Tools';
+import DevTools from './pages/DevTools';
 
 interface MenuItem {
   key: string;
@@ -31,29 +25,35 @@ const menuItems: MenuItem[] = [
     component: <Dashboard />,
   },
   {
-    key: 'files',
-    icon: DocumentTextIcon,
-    label: 'File Manager',
-    component: <FileManager />,
+    key: 'devtools',
+    icon: CommandLineIcon,
+    label: 'DevTools',
+    component: <DevTools />,
   },
-  {
-    key: 'tools',
-    icon: WrenchScrewdriverIcon,
-    label: 'Tools',
-    component: <Tools />,
-  },
-  {
-    key: 'profile',
-    icon: UserIcon,
-    label: 'Profile',
-    component: <UserProfile />,
-  },
-  {
-    key: 'settings',
-    icon: Cog6ToothIcon,
-    label: 'Settings',
-    component: <Settings />,
-  },
+  // {
+  //   key: 'files',
+  //   icon: DocumentTextIcon,
+  //   label: 'File Manager',
+  //   component: <FileManager />,
+  // },
+  // {
+  //   key: 'tools',
+  //   icon: WrenchScrewdriverIcon,
+  //   label: 'Tools',
+  //   component: <Tools />,
+  // },
+  // {
+  //   key: 'profile',
+  //   icon: UserIcon,
+  //   label: 'Profile',
+  //   component: <UserProfile />,
+  // },
+  // {
+  //   key: 'settings',
+  //   icon: Cog6ToothIcon,
+  //   label: 'Settings',
+  //   component: <Settings />,
+  // },
 ];
 
 const App: React.FC = () => {
@@ -120,7 +120,7 @@ const App: React.FC = () => {
 
         {/* Content */}
         <main className="flex-1 overflow-auto p-6 custom-scrollbar">
-          <div className="max-w-7xl mx-auto">
+          <div className="h-full max-w-7xl mx-auto">
             {currentComponent}
           </div>
         </main>
