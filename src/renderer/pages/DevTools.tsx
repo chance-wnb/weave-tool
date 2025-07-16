@@ -1,23 +1,96 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import '@xterm/xterm/css/xterm.css';
 
 const DevTools: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stdout' | 'visualization'>('stdout');
-  const [command, setCommand] = useState('');
   const [stdoutContent, setStdoutContent] = useState('Welcome to DevTools\n> Ready for commands...\n');
-  const [topHeight, setTopHeight] = useState(300); // Initial height for command input area
+  const [topHeight, setTopHeight] = useState(300); // Initial height for terminal area
   const [isDragging, setIsDragging] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const terminal = useRef<Terminal | null>(null);
+  const fitAddon = useRef<FitAddon | null>(null);
 
-  const handleCommand = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (command.trim()) {
-      setStdoutContent(prev => `${prev}> ${command}\n`);
-      // Here you would typically execute the command and capture output
-      setStdoutContent(prev => `${prev}Command executed: ${command}\n`);
-      setCommand('');
+  // Initialize terminal
+  useEffect(() => {
+    if (!terminalRef.current || terminal.current) return;
+
+    // Create terminal instance
+    terminal.current = new Terminal({
+      cursorBlink: true,
+      theme: {
+        background: '#000000',
+        foreground: '#ffffff',
+        cursor: '#ffffff',
+      },
+      fontSize: 14,
+      fontFamily: '"Courier New", monospace',
+    });
+
+    // Create and load addons
+    fitAddon.current = new FitAddon();
+    const webLinksAddon = new WebLinksAddon();
+    
+    terminal.current.loadAddon(fitAddon.current);
+    terminal.current.loadAddon(webLinksAddon);
+
+    // Open terminal in DOM
+    terminal.current.open(terminalRef.current);
+
+    // Welcome message
+    terminal.current.writeln('Welcome to DevTools Terminal');
+    terminal.current.writeln('Type commands and press Enter to execute...');
+    terminal.current.write('$ ');
+
+    // Handle command input
+    let currentLine = '';
+    terminal.current.onData((data) => {
+      if (!terminal.current) return;
+
+      if (data === '\r') { // Enter key
+        terminal.current.writeln('');
+        if (currentLine.trim()) {
+          // Capture the command before resetting
+          const commandToExecute = currentLine;
+          
+          // Echo command to stdout content
+          setStdoutContent(prev => `${prev}> ${commandToExecute}\nCommand executed: ${commandToExecute}\n`);
+          
+          // Here you would typically execute the actual command
+          terminal.current.writeln(`Executed: ${commandToExecute}`);
+        }
+        currentLine = '';
+        terminal.current.write('$ ');
+      } else if (data === '\x7f') { // Backspace
+        if (currentLine.length > 0) {
+          currentLine = currentLine.slice(0, -1);
+          terminal.current.write('\b \b');
+        }
+      } else if (data >= ' ') { // Printable characters
+        currentLine += data;
+        terminal.current.write(data);
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      if (terminal.current) {
+        terminal.current.dispose();
+        terminal.current = null;
+      }
+    };
+  }, []);
+
+  // Fit terminal when container size changes
+  useEffect(() => {
+    if (fitAddon.current && terminal.current) {
+      setTimeout(() => fitAddon.current?.fit(), 100);
     }
-  }, [command]);
+  }, [topHeight, containerHeight]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     setIsDragging(true);
@@ -78,46 +151,21 @@ const DevTools: React.FC = () => {
 
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-gray-900 text-white" style={{ height: '100%' }}>
-      {/* Command Input Area */}
+      {/* Terminal Area */}
       <div 
         className="bg-gray-800 border-b border-gray-700 flex flex-col flex-shrink-0"
         style={{ height: `${topHeight}px` }}
       >
         <div className="p-4 flex-1 flex flex-col min-h-0">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200 flex-shrink-0">Command Line Interface</h3>
+          <h3 className="text-lg font-semibold mb-4 text-gray-200 flex-shrink-0">Terminal</h3>
           
-          {/* Command History/Output Preview */}
-          <div className="flex-1 bg-black rounded-lg p-3 mb-4 overflow-auto font-mono text-sm min-h-0">
-            <div className="text-green-400">
-              Last executed commands:
-            </div>
-            <div className="text-gray-300 mt-2">
-              {stdoutContent.split('\n').slice(-5).map((line, idx) => (
-                <div key={idx}>{line}</div>
-              ))}
-            </div>
+          {/* Terminal Container */}
+          <div className="flex-1 min-h-0">
+            <div 
+              ref={terminalRef}
+              className="w-full h-full"
+            />
           </div>
-
-          {/* Command Input */}
-          <form onSubmit={handleCommand} className="flex gap-2 flex-shrink-0">
-            <div className="flex-1 flex items-center bg-black rounded-lg px-3 py-2">
-              <span className="text-green-400 mr-2">$</span>
-              <input
-                type="text"
-                value={command}
-                onChange={(e) => setCommand(e.target.value)}
-                placeholder="Enter command..."
-                className="flex-1 bg-transparent text-white outline-none font-mono"
-                autoFocus
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
-            >
-              Execute
-            </button>
-          </form>
         </div>
       </div>
 
