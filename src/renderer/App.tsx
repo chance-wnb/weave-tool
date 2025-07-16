@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
 import {
-  Layout,
-  Menu,
-  theme,
-  Typography,
-} from 'antd';
-import {
-  DashboardOutlined,
-  SettingOutlined,
-  FileTextOutlined,
-  UserOutlined,
-  ToolOutlined,
-} from '@ant-design/icons';
+  ChartBarIcon,
+  Cog6ToothIcon,
+  DocumentTextIcon,
+  UserIcon,
+  WrenchScrewdriverIcon,
+  Bars3Icon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 
 // Import page components
 import Dashboard from './pages/Dashboard';
@@ -20,12 +16,9 @@ import Settings from './pages/Settings';
 import UserProfile from './pages/UserProfile';
 import Tools from './pages/Tools';
 
-const { Header, Sider, Content } = Layout;
-const { Title } = Typography;
-
 interface MenuItem {
   key: string;
-  icon: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   component: React.ReactNode;
 }
@@ -33,31 +26,31 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   {
     key: 'dashboard',
-    icon: <DashboardOutlined />,
+    icon: ChartBarIcon,
     label: 'Dashboard',
     component: <Dashboard />,
   },
   {
     key: 'files',
-    icon: <FileTextOutlined />,
+    icon: DocumentTextIcon,
     label: 'File Manager',
     component: <FileManager />,
   },
   {
     key: 'tools',
-    icon: <ToolOutlined />,
+    icon: WrenchScrewdriverIcon,
     label: 'Tools',
     component: <Tools />,
   },
   {
     key: 'profile',
-    icon: <UserOutlined />,
+    icon: UserIcon,
     label: 'Profile',
     component: <UserProfile />,
   },
   {
     key: 'settings',
-    icon: <SettingOutlined />,
+    icon: Cog6ToothIcon,
     label: 'Settings',
     component: <Settings />,
   },
@@ -66,71 +59,73 @@ const menuItems: MenuItem[] = [
 const App: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedKey, setSelectedKey] = useState('dashboard');
-  const {
-    token: { colorBgContainer, borderRadiusLG },
-  } = theme.useToken();
 
   const currentComponent = menuItems.find(item => item.key === selectedKey)?.component;
+  const currentLabel = menuItems.find(item => item.key === selectedKey)?.label;
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider 
-        collapsible 
-        collapsed={collapsed} 
-        onCollapse={setCollapsed}
-        style={{
-          background: colorBgContainer,
-        }}
-      >
-        <div style={{ 
-          height: 32, 
-          margin: 16, 
-          background: 'rgba(255, 255, 255, 0.2)',
-          borderRadius: borderRadiusLG,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          fontWeight: 'bold',
-        }}>
-          {collapsed ? 'W' : 'Weave Tool'}
+    <div className="flex h-screen bg-gray-50">
+      {/* Sidebar */}
+      <div className={`bg-sidebar-bg transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'} flex flex-col`}>
+        {/* Logo/Header */}
+        <div className="flex items-center justify-between p-4">
+          <div className="text-white font-bold text-lg">
+            {collapsed ? 'W' : 'Weave Tool'}
+          </div>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-gray-300 hover:text-white transition-colors"
+          >
+            {collapsed ? (
+              <Bars3Icon className="w-5 h-5" />
+            ) : (
+              <XMarkIcon className="w-5 h-5" />
+            )}
+          </button>
         </div>
-        <Menu
-          theme="dark"
-          selectedKeys={[selectedKey]}
-          mode="inline"
-          items={menuItems.map(item => ({
-            key: item.key,
-            icon: item.icon,
-            label: item.label,
-          }))}
-          onClick={({ key }) => setSelectedKey(key)}
-        />
-      </Sider>
-      <Layout>
-        <Header style={{ 
-          padding: '0 24px', 
-          background: colorBgContainer,
-          display: 'flex',
-          alignItems: 'center',
-        }}>
-          <Title level={3} style={{ margin: 0 }}>
-            {menuItems.find(item => item.key === selectedKey)?.label}
-          </Title>
-        </Header>
-        <Content
-          style={{
-            margin: '24px 16px',
-            padding: 24,
-            minHeight: 280,
-            background: colorBgContainer,
-            borderRadius: borderRadiusLG,
-          }}
-        >
-          {currentComponent}
-        </Content>
-      </Layout>
-    </Layout>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-2 py-4 space-y-1">
+          {menuItems.map((item) => {
+            const IconComponent = item.icon;
+            const isActive = selectedKey === item.key;
+            
+            return (
+              <button
+                key={item.key}
+                onClick={() => setSelectedKey(item.key)}
+                className={`w-full flex items-center px-3 py-3 text-left rounded-lg transition-colors duration-200 ${
+                  isActive
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-300 hover:bg-sidebar-hover hover:text-white'
+                }`}
+                title={collapsed ? item.label : undefined}
+              >
+                <IconComponent className="w-5 h-5 shrink-0" />
+                {!collapsed && (
+                  <span className="ml-3 text-sm font-medium">{item.label}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+          <h1 className="text-2xl font-semibold text-gray-900">{currentLabel}</h1>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-auto p-6 custom-scrollbar">
+          <div className="max-w-7xl mx-auto">
+            {currentComponent}
+          </div>
+        </main>
+      </div>
+    </div>
   );
 };
 

@@ -1,38 +1,91 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  
+  --color-sidebar-bg: #1f2937;
+  --color-sidebar-hover: #374151;
+  --color-sidebar-active: #4b5563;
+  
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-html, body, #root {
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html, body, #root {
+    height: 100%;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
-/* Ensure the layout fills the entire viewport */
-.ant-layout {
-  min-height: 100vh;
-}
+@layer components {
+  /* Custom scrollbar for better appearance */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
 
-/* Custom scrollbar for better appearance */
-::-webkit-scrollbar {
-  width: 8px;
-}
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-100 rounded;
+  }
 
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded hover:bg-gray-400;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
+  /* Sidebar item styling */
+  .sidebar-item {
+    @apply flex items-center px-4 py-3 text-gray-300 transition-colors duration-200 cursor-pointer;
+    background-color: transparent;
+  }
+  
+  .sidebar-item:hover {
+    background-color: var(--color-sidebar-hover);
+    @apply text-white;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  .sidebar-item.active {
+    background-color: var(--color-primary-600);
+    @apply text-white;
+  }
+
+  .sidebar-item-icon {
+    @apply mr-3 text-lg;
+  }
+
+  /* Card styling */
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+
+  .card-header {
+    @apply border-b border-gray-200 pb-4 mb-4;
+  }
+
+  /* Button variants */
+  .btn-primary {
+    background-color: var(--color-primary-600);
+    @apply text-white px-4 py-2 rounded-md font-medium transition-colors duration-200;
+  }
+  
+  .btn-primary:hover {
+    background-color: var(--color-primary-700);
+  }
+
+  .btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-md font-medium transition-colors duration-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200;
+  }
 } 
