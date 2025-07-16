@@ -1,5 +1,10 @@
 import { app, BrowserWindow } from 'electron';
-import * as path from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const createWindow = (): void => {
   const win = new BrowserWindow({
@@ -8,7 +13,7 @@ const createWindow = (): void => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js') // We'll create this later if needed
+      // preload: join(__dirname, 'preload.js') // Uncomment when you add preload
     }
   });
 
