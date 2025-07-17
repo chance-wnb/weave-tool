@@ -4,12 +4,14 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc",
-    "build:renderer": "vite build",
-    "build:all": "npm run build && npm run build:renderer",
+    "build:main": "VITE_TARGET=main vite build",
+    "build:preload": "VITE_TARGET=preload vite build",
+    "build:renderer": "VITE_TARGET=renderer vite build",
+    "build:all": "npm run build:main && npm run build:preload && npm run build:renderer",
     "dev:renderer": "vite",
-    "dev:main": "tsc --watch",
-    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
+    "dev:main": "VITE_TARGET=main vite build --watch",
+    "dev:preload": "VITE_TARGET=preload vite build --watch",
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"npm run dev:preload\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
     "start": "npm run build:all && electron .",
     "clean": "rm -rf dist dist-renderer",
     "rebuild": "npm run clean && npm run build:all",
@@ -19,6 +21,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "@types/electron": "^1.4.38",
     "@types/node": "^24.0.14",
     "@types/react": "^19.1.8",
@@ -39,8 +42,11 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-paginate": "^8.3.0",
+    "react-use": "^17.6.0",
     "tailwindcss": "^4.1.11"
   }
 }

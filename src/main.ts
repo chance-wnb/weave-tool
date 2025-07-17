@@ -1,10 +1,14 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import * as pty from 'node-pty';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Terminal PTY instance
+let ptyProcess: pty.IPty | null = null;
 
 const createWindow = (): void => {
   const win = new BrowserWindow({
@@ -13,7 +17,7 @@ const createWindow = (): void => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      // preload: join(__dirname, 'preload.js') // Uncomment when you add preload
+      preload: join(__dirname, 'preload.js')
     },
     titleBarStyle: 'hiddenInset', // Better macOS integration
     show: false, // Don't show until ready
@@ -34,6 +38,56 @@ const createWindow = (): void => {
     win.show();
   });
 };
+
+// Terminal IPC Handlers
+ipcMain.handle('terminal:start', async () => {
+  // Kill existing terminal if it exists
+  if (ptyProcess) {
+    ptyProcess.kill();
+  }
+
+  // Determine shell based on platform
+  const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+  
+  // Create new PTY process
+  ptyProcess = pty.spawn(shell, [], {
+    name: 'xterm-color',
+    cols: 80,
+    rows: 24,
+    cwd: process.cwd(),
+    env: process.env,
+  });
+
+  // Send all terminal output to renderer
+  ptyProcess.onData((data) => {
+    BrowserWindow.getAllWindows().forEach(win => {
+      win.webContents.send('terminal:data', data);
+    });
+  });
+
+  // Handle terminal exit
+  ptyProcess.onExit(({ exitCode }) => {
+    BrowserWindow.getAllWindows().forEach(win => {
+      win.webContents.send('terminal:exit', exitCode);
+    });
+    ptyProcess = null;
+  });
+
+  console.log('Terminal started');
+});
+
+ipcMain.handle('terminal:write', async (_, data: string) => {
+  if (ptyProcess) {
+    ptyProcess.write(data);
+  }
+});
+
+ipcMain.handle('terminal:kill', async () => {
+  if (ptyProcess) {
+    ptyProcess.kill();
+    ptyProcess = null;
+  }
+});
 
 app.whenReady().then((): void => {
   createWindow();
