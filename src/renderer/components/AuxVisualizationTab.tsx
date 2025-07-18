@@ -5,10 +5,11 @@ import {
   getSortedRowModel,
   getFilteredRowModel,
   flexRender,
-  createColumnHelper,
   SortingState,
   ColumnResizeMode,
 } from '@tanstack/react-table';
+import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/outline';
+import { useFullscreen } from '../contexts/FullscreenContext';
 
 // Static cache stored at module level - persists across component unmounts
 const staticAnalysisCache = new Map<string, AnalysisResult>();
@@ -333,6 +334,8 @@ const AuxVisualizationTab: React.FC<AuxVisualizationTabProps> = ({
   onGoToNextPage,
   onGoToLatestPage,
 }) => {
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
+  
   // Derived values
   const hasPages = outputPages.length > 0;
   const currentPage = outputPages[currentPageIndex];
@@ -487,6 +490,30 @@ const AuxVisualizationTab: React.FC<AuxVisualizationTabProps> = ({
                   Latest 📊
                 </div>
               )}
+              
+              {/* Fullscreen Toggle Button */}
+              <div
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFullscreen();
+                }}
+                className="px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 cursor-pointer rounded text-white select-none user-select-none transition-colors flex items-center justify-center gap-1"
+                style={{ minHeight: '28px', minWidth: '80px' }}
+                title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isFullscreen ? (
+                  <>
+                    <ArrowsPointingInIcon className="w-3 h-3" />
+                    Exit
+                  </>
+                ) : (
+                  <>
+                    <ArrowsPointingOutIcon className="w-3 h-3" />
+                    Zoom
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>

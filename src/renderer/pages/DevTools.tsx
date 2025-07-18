@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useList, useSetState } from 'react-use';
+import { useFullscreen } from '../contexts/FullscreenContext';
 import StdoutDumpTab from '../components/StdoutDumpTab';
 import AuxVisualizationTab from '../components/AuxVisualizationTab';
 import '@xterm/xterm/css/xterm.css';
@@ -15,6 +16,8 @@ interface OutputPage {
 }
 
 const DevTools: React.FC = () => {
+  const { isFullscreen } = useFullscreen();
+  
   // UI state management with useSetState
   const [uiState, setUiState] = useSetState({
     activeTab: 'stdout' as 'stdout' | 'visualization',
@@ -388,37 +391,41 @@ const DevTools: React.FC = () => {
   const splitterHeight = 8;
   const bottomHeight = uiState.containerHeight > 0 ? uiState.containerHeight - uiState.topHeight - splitterHeight : 'calc(100% - 308px)';
 
-  return (
+    return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-gray-900 text-white" style={{ height: '100%' }}>
-      {/* Terminal Area */}
+      {/* Terminal Area - hidden in fullscreen mode */}
       <div 
         className="bg-gray-800 border-b border-gray-700 flex flex-col flex-shrink-0"
-        style={{ height: `${uiState.topHeight}px` }}
+        style={{ 
+          height: `${uiState.topHeight}px`,
+          display: isFullscreen ? 'none' : 'flex'
+        }}
       >
-        <div className="p-4 flex-1 flex flex-col min-h-0">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200 flex-shrink-0">Terminal</h3>
-          
-          {/* Terminal Container */}
-          <div className="flex-1 min-h-0">
-            <div 
-              ref={terminalRef}
-              className="w-full h-full"
-              onClick={() => {
-                // Focus terminal when clicked
-                if (terminal.current) {
-                  terminal.current.focus();
-                }
-              }}
-            />
+          <div className="p-4 flex-1 flex flex-col min-h-0">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200 flex-shrink-0">Terminal</h3>
+            
+            {/* Terminal Container */}
+            <div className="flex-1 min-h-0">
+              <div 
+                ref={terminalRef}
+                className="w-full h-full"
+                onClick={() => {
+                  // Focus terminal when clicked
+                  if (terminal.current) {
+                    terminal.current.focus();
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Draggable Splitter */}
+      {/* Draggable Splitter - hidden in fullscreen mode */}
       <div
         className={`h-2 bg-gray-700 cursor-row-resize hover:bg-gray-600 transition-colors flex-shrink-0 ${
           uiState.isDragging ? 'bg-blue-500' : ''
         }`}
+        style={{ display: isFullscreen ? 'none' : 'block' }}
         onMouseDown={handleMouseDown}
       >
         <div className="h-full flex items-center justify-center">
@@ -427,9 +434,14 @@ const DevTools: React.FC = () => {
       </div>
 
       {/* Bottom Area with Tabs */}
-      <div className="flex flex-col overflow-hidden min-h-0" style={{ height: typeof bottomHeight === 'number' ? `${bottomHeight}px` : bottomHeight }}>
-        {/* Tab Navigation */}
-        <div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
+      <div className={`flex flex-col overflow-hidden min-h-0 transition-all duration-300 ${
+        isFullscreen ? 'h-full' : ''
+      }`} style={isFullscreen ? { height: '100%' } : { height: typeof bottomHeight === 'number' ? `${bottomHeight}px` : bottomHeight }}>
+        {/* Tab Navigation - hidden in fullscreen mode */}
+        <div 
+          className="bg-gray-800 border-b border-gray-700 flex-shrink-0"
+          style={{ display: isFullscreen ? 'none' : 'block' }}
+        >
           <div className="flex">
             <button
               onClick={() => setUiState({ activeTab: 'stdout' })}
@@ -456,7 +468,11 @@ const DevTools: React.FC = () => {
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden min-h-0">
-          {uiState.activeTab === 'stdout' && (
+          {/* Stdout Tab - always mounted, visibility controlled by display */}
+          <div style={{ 
+            display: (isFullscreen || uiState.activeTab !== 'stdout') ? 'none' : 'block',
+            height: '100%'
+          }}>
             <StdoutDumpTab
               outputPages={outputPages}
               currentPageIndex={uiState.currentPageIndex}
@@ -466,9 +482,13 @@ const DevTools: React.FC = () => {
               onGoToNextPage={goToNextPage}
               onGoToLatestPage={goToLatestPage}
             />
-          )}
+          </div>
           
-          {uiState.activeTab === 'visualization' && (
+          {/* Visualization Tab - always mounted, visibility controlled by display */}
+          <div style={{ 
+            display: (!isFullscreen && uiState.activeTab !== 'visualization') ? 'none' : 'block',
+            height: '100%'
+          }}>
             <AuxVisualizationTab
               outputPages={outputPages}
               currentPageIndex={uiState.currentPageIndex}
@@ -478,7 +498,7 @@ const DevTools: React.FC = () => {
               onGoToNextPage={goToNextPage}
               onGoToLatestPage={goToLatestPage}
             />
-          )}
+          </div>
         </div>
       </div>
     </div>
