@@ -3,6 +3,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useList, useSetState } from 'react-use';
+import StdoutDumpTab from '../components/StdoutDumpTab';
+import AuxVisualizationTab from '../components/AuxVisualizationTab';
 import '@xterm/xterm/css/xterm.css';
 
 interface OutputPage {
@@ -137,6 +139,10 @@ const DevTools: React.FC = () => {
   handleNewOutputRef.current = handleNewOutput;
 
   // Navigation handlers
+  const handlePageIndexChange = useCallback((index: number) => {
+    setUiState({ currentPageIndex: index });
+  }, [setUiState]);
+
   const goToLatestPage = useCallback(() => {
     if (outputPages.length > 0) {
       setUiState({ currentPageIndex: outputPages.length - 1 });
@@ -151,10 +157,7 @@ const DevTools: React.FC = () => {
     setUiState({ currentPageIndex: Math.min(outputPages.length - 1, uiState.currentPageIndex + 1) });
   }, [outputPages.length, uiState.currentPageIndex, setUiState]);
 
-  // Get current page to display
-  const currentPage = outputPages[uiState.currentPageIndex];
-  const hasPages = outputPages.length > 0;
-  const isOnLatestPage = uiState.currentPageIndex === outputPages.length - 1;
+  // Derived values moved to StdoutDumpTab component
 
   // Initialize terminal
   useEffect(() => {
@@ -398,221 +401,27 @@ const DevTools: React.FC = () => {
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden min-h-0">
           {uiState.activeTab === 'stdout' && (
-            <div className="h-full p-4 flex flex-col">
-              <div className="h-full bg-black rounded-lg p-4 overflow-hidden font-mono text-sm flex flex-col">
-                
-                {/* Header with page info and navigation */}
-                <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <div className="text-green-400">
-                    {hasPages ? `Page ${uiState.currentPageIndex + 1} of ${outputPages.length}` : 'No pages yet'}
-                  </div>
-                  
-                  {hasPages && (
-                    <div className="flex items-center gap-2">
-                      {/* Quick navigation buttons */}
-                      <div
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Previous button clicked');
-                          if (uiState.currentPageIndex > 0) {
-                            goToPreviousPage();
-                          }
-                        }}
-                        className={`px-3 py-2 text-xs rounded cursor-pointer select-none user-select-none transition-colors flex items-center justify-center ${
-                          uiState.currentPageIndex === 0
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                            : 'bg-gray-700 hover:bg-gray-600 text-white'
-                        }`}
-                        style={{ 
-                          minHeight: '28px', 
-                          minWidth: '50px',
-                          pointerEvents: uiState.currentPageIndex === 0 ? 'none' : 'auto'
-                        }}
-                      >
-                        ← Prev
-                      </div>
-                      
-                      <div
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Next button clicked');
-                          if (uiState.currentPageIndex < outputPages.length - 1) {
-                            goToNextPage();
-                          }
-                        }}
-                        className={`px-3 py-2 text-xs rounded cursor-pointer select-none user-select-none transition-colors flex items-center justify-center ${
-                          uiState.currentPageIndex === outputPages.length - 1
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                            : 'bg-gray-700 hover:bg-gray-600 text-white'
-                        }`}
-                        style={{ 
-                          minHeight: '28px', 
-                          minWidth: '50px',
-                          pointerEvents: uiState.currentPageIndex === outputPages.length - 1 ? 'none' : 'auto'
-                        }}
-                      >
-                        Next →
-                      </div>
-                      
-                      {!isOnLatestPage && (
-                        <div
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('Latest button clicked');
-                            goToLatestPage();
-                          }}
-                          className="px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 cursor-pointer rounded text-white select-none user-select-none transition-colors flex items-center justify-center"
-                          style={{ minHeight: '28px', minWidth: '60px' }}
-                        >
-                          Latest ⚡
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Page content */}
-                {!hasPages ? (
-                  <div className="text-gray-500 italic flex-1 flex items-center justify-center">
-                    No output yet. Run a command to see pages...
-                  </div>
-                ) : currentPage ? (
-                  <div className="flex-1 min-h-0 flex flex-col">
-                    {/* Page metadata */}
-                    <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-                      <span className="text-blue-400 font-semibold">Page {uiState.currentPageIndex + 1}</span>
-                      <span className="text-xs text-gray-400">
-                        {currentPage.timestamp.toLocaleTimeString()}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        currentPage.status === 'active' 
-                          ? 'bg-yellow-900 text-yellow-300' 
-                          : 'bg-green-900 text-green-300'
-                      }`}>
-                        {currentPage.status}
-                      </span>
-                    </div>
-                    
-                    {/* Page output */}
-                    <div className="flex-1 min-h-0 bg-gray-900 rounded p-3 overflow-auto">
-                      <pre className="whitespace-pre-wrap text-gray-300 text-xs">
-                        {/* Show current page content */}
-                        {currentPage.content || '(no output)'}
-                        
-                        {/* Show live buffer if this is the latest page and it's active */}
-                        {isOnLatestPage && currentPageBuffer && currentPage.status === 'active' && (
-                          <span className="text-yellow-300">
-                            {currentPageBuffer.slice(currentPage.content.length)}
-                          </span>
-                        )}
-                      </pre>
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Custom Pagination controls */}
-                {outputPages.length > 1 && (
-                  <div className="mt-4 flex justify-center flex-shrink-0">
-                    <div className="flex items-center gap-1 text-xs">
-                      {/* Previous button */}
-                      <div
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Paginate previous clicked');
-                          if (uiState.currentPageIndex > 0) {
-                            setUiState({ currentPageIndex: uiState.currentPageIndex - 1 });
-                          }
-                        }}
-                        className={`px-3 py-2 rounded cursor-pointer transition-colors flex items-center justify-center min-w-[32px] select-none user-select-none ${
-                          uiState.currentPageIndex === 0
-                            ? 'opacity-50 cursor-not-allowed bg-gray-700 text-gray-500'
-                            : 'bg-gray-700 hover:bg-gray-600 text-white'
-                        }`}
-                        style={{ pointerEvents: uiState.currentPageIndex === 0 ? 'none' : 'auto' }}
-                      >
-                        ‹
-                      </div>
-                      
-                      {/* Page numbers */}
-                      {outputPages.map((_, index) => (
-                        <div
-                          key={index}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log(`Paginate page ${index + 1} clicked`);
-                            setUiState({ currentPageIndex: index });
-                          }}
-                          className={`px-3 py-2 rounded cursor-pointer transition-colors flex items-center justify-center min-w-[32px] select-none user-select-none ${
-                            index === uiState.currentPageIndex
-                              ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'bg-gray-700 hover:bg-gray-600 text-white'
-                          }`}
-                        >
-                          {index + 1}
-                        </div>
-                      ))}
-                      
-                      {/* Next button */}
-                      <div
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Paginate next clicked');
-                          if (uiState.currentPageIndex < outputPages.length - 1) {
-                            setUiState({ currentPageIndex: uiState.currentPageIndex + 1 });
-                          }
-                        }}
-                        className={`px-3 py-2 rounded cursor-pointer transition-colors flex items-center justify-center min-w-[32px] select-none user-select-none ${
-                          uiState.currentPageIndex === outputPages.length - 1
-                            ? 'opacity-50 cursor-not-allowed bg-gray-700 text-gray-500'
-                            : 'bg-gray-700 hover:bg-gray-600 text-white'
-                        }`}
-                        style={{ pointerEvents: uiState.currentPageIndex === outputPages.length - 1 ? 'none' : 'auto' }}
-                      >
-                        ›
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <StdoutDumpTab
+              outputPages={outputPages}
+              currentPageIndex={uiState.currentPageIndex}
+              currentPageBuffer={currentPageBuffer}
+              onPageIndexChange={handlePageIndexChange}
+              onGoToPreviousPage={goToPreviousPage}
+              onGoToNextPage={goToNextPage}
+              onGoToLatestPage={goToLatestPage}
+            />
           )}
           
           {uiState.activeTab === 'visualization' && (
-            <div className="h-full p-4">
-              <div className="h-full bg-gray-800 rounded-lg p-4 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">📊</div>
-                  <h3 className="text-xl font-semibold mb-2">Aux Visualization</h3>
-                  <p className="text-gray-400">
-                    Visualization tools and charts will be displayed here
-                  </p>
-                  <div className="mt-6 grid grid-cols-2 gap-4 max-w-md">
-                    <div className="bg-gray-700 p-4 rounded-lg">
-                      <div className="text-blue-400 text-2xl mb-2">📈</div>
-                      <div className="text-sm">Performance</div>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded-lg">
-                      <div className="text-green-400 text-2xl mb-2">🔍</div>
-                      <div className="text-sm">Analysis</div>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded-lg">
-                      <div className="text-purple-400 text-2xl mb-2">🧠</div>
-                      <div className="text-sm">Insights</div>
-                    </div>
-                    <div className="bg-gray-700 p-4 rounded-lg">
-                      <div className="text-orange-400 text-2xl mb-2">⚡</div>
-                      <div className="text-sm">Real-time</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AuxVisualizationTab
+              outputPages={outputPages}
+              currentPageIndex={uiState.currentPageIndex}
+              currentPageBuffer={currentPageBuffer}
+              onPageIndexChange={handlePageIndexChange}
+              onGoToPreviousPage={goToPreviousPage}
+              onGoToNextPage={goToNextPage}
+              onGoToLatestPage={goToLatestPage}
+            />
           )}
         </div>
       </div>

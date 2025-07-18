@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('terminal:exit', wrapper);
   },
   killTerminal: () => ipcRenderer.invoke('terminal:kill'),
+  
+  // LLM Analysis
+  analyzeOutput: (pageId: string, content: string) => ipcRenderer.invoke('llm:analyzeOutput', pageId, content),
 });
 
 // Type declaration for the exposed API
@@ -32,6 +35,7 @@ declare global {
       onTerminalData: (callback: (data: string) => void) => () => void;
       onTerminalExit: (callback: (exitCode: number) => void) => () => void;
       killTerminal: () => Promise<void>;
+      analyzeOutput: (pageId: string, content: string) => Promise<any>;
     }
   }
 } 
