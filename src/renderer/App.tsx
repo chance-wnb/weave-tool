@@ -59,7 +59,7 @@ const menuItems: MenuItem[] = [
 
 const App: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [selectedKey, setSelectedKey] = useState('devtools');
+  const [selectedKey, setSelectedKey] = useState('dashboard');
   const { isFullscreen } = useFullscreen();
 
   const currentComponent = menuItems.find(item => item.key === selectedKey)?.component;

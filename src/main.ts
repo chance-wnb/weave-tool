@@ -6,9 +6,6 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 
 import Groq from "groq-sdk";
-// Removed debug file imports
-
-// Removed zod and zodResponseFormat imports since we're using regular JSON parsing
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
