@@ -37,6 +37,7 @@ const DevTools: React.FC = () => {
   const fitAddon = useRef<FitAddon | null>(null);
   const pageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPageIdRef = useRef<string | null>(null);
+  const currentPageContentRef = useRef<string>(''); // Track content in ref to avoid race conditions
   const handleNewOutputRef = useRef<((data: string) => void) | null>(null);
 
   // Manual function to conclude all active pages except current
@@ -48,12 +49,11 @@ const DevTools: React.FC = () => {
     );
     const changedCount = updated.filter((page, idx) => page.status !== outputPages[idx]?.status).length;
     if (changedCount > 0) {
-      console.log('📄 Concluded', changedCount, 'previous pages');
       pageActions.set(updated);
     }
   }, [outputPages, pageActions]);
 
-  // Handle new output with page-based capture
+  // Handle new output with page-based capture - using refs to avoid race conditions
   const handleNewOutput = useCallback((data: string) => {
     // Filter out data that shouldn't reset the timer (cursor movements, etc.)
     const isSignificantOutput = (str: string) => {
@@ -79,7 +79,7 @@ const DevTools: React.FC = () => {
 
       const pageId = Date.now().toString();
       currentPageIdRef.current = pageId;
-      console.log('📄 Created new page:', pageId);
+      currentPageContentRef.current = data; // Initialize content ref
       
       const newPage: OutputPage = {
         id: pageId,
@@ -94,49 +94,103 @@ const DevTools: React.FC = () => {
       // Auto-switch to the latest page
       setUiState({ currentPageIndex: outputPages.length }); // New page will be at length index
     } else {
-      // Add to current page
-      setCurrentPageBuffer(prev => prev + data);
-      const updated = outputPages.map(page => 
-        page.id === currentPageIdRef.current 
-          ? { ...page, content: page.content + data }
-          : page
-      );
-      pageActions.set(updated);
+      // Add to current page using ref to avoid race conditions
+      currentPageContentRef.current += data;
+      setCurrentPageBuffer(currentPageContentRef.current);
+      
+      // Update state less frequently to avoid race conditions
+      // Only update every few chunks or on significant boundaries
+      const shouldUpdateState = data.includes('\n') || data.includes('│') || data.length > 500;
+      
+      if (shouldUpdateState) {
+        const updated = outputPages.map(page => 
+          page.id === currentPageIdRef.current 
+            ? { ...page, content: currentPageContentRef.current }
+            : page
+        );
+        pageActions.set(updated);
+      }
     }
 
     // Only reset timeout for significant output
     if (isSignificant) {
-      console.log('📄 Resetting timeout due to significant output');
       // Clear existing timeout
       if (pageTimeoutRef.current) {
         clearTimeout(pageTimeoutRef.current);
       }
 
-              // Set timeout to conclude page after 5 seconds of inactivity
-        pageTimeoutRef.current = setTimeout(() => {
-          console.log('📄 Timeout fired - concluding all active pages');
-          
-          // Mark ALL active pages as concluded (not just current)
+      // Set timeout to conclude page after 5 seconds of inactivity
+      pageTimeoutRef.current = setTimeout(() => {
+        
+        // Final update with complete content before concluding
+        if (currentPageIdRef.current && currentPageContentRef.current) {
+          const finalUpdate = outputPages.map(page => 
+            page.id === currentPageIdRef.current 
+              ? { ...page, content: currentPageContentRef.current, status: 'concluded' as const }
+              : page.status === 'active' 
+                ? { ...page, status: 'concluded' as const }
+                : page
+          );
+          pageActions.set(finalUpdate);
+        } else {
+          // No current page, just conclude existing active pages
           const updated = outputPages.map(page => 
             page.status === 'active' 
               ? { ...page, status: 'concluded' as const }
               : page
           );
-          const concludedCount = updated.filter((page, idx) => 
-            page.status === 'concluded' && outputPages[idx]?.status === 'active'
-          ).length;
-          console.log('📄 Concluded', concludedCount, 'active pages');
           pageActions.set(updated);
-          
-          // Reset for next page
-          currentPageIdRef.current = null;
-          setCurrentPageBuffer('');
-        }, 5000); // 5 seconds
+        }
+        
+        // Reset for next page
+        currentPageIdRef.current = null;
+        currentPageContentRef.current = '';
+        setCurrentPageBuffer('');
+      }, 5000); // 5 seconds
     }
-  }, [outputPages, pageActions]);
+  }, [concludePreviousPages, pageActions, outputPages, setUiState]);
 
   // Keep ref updated with latest function
   handleNewOutputRef.current = handleNewOutput;
+
+  // Manual conclude page handler
+  const handleConcludeActivePage = useCallback(() => {
+    if (currentPageIdRef.current && currentPageContentRef.current) {
+      // Clear any existing timeout
+      if (pageTimeoutRef.current) {
+        clearTimeout(pageTimeoutRef.current);
+        pageTimeoutRef.current = null;
+      }
+
+      // Conclude the current active page immediately
+      const finalUpdate = outputPages.map(page => 
+        page.id === currentPageIdRef.current 
+          ? { ...page, content: currentPageContentRef.current, status: 'concluded' as const }
+          : page.status === 'active' 
+            ? { ...page, status: 'concluded' as const }
+            : page
+      );
+      pageActions.set(finalUpdate);
+      
+      // Reset for next page
+      currentPageIdRef.current = null;
+      currentPageContentRef.current = '';
+      setCurrentPageBuffer('');
+    }
+  }, [outputPages, pageActions]);
+
+  // Listen for manual conclude page events
+  useEffect(() => {
+    const handleCustomEvent = () => {
+      handleConcludeActivePage();
+    };
+
+    window.addEventListener('concludeActivePage', handleCustomEvent);
+    
+    return () => {
+      window.removeEventListener('concludeActivePage', handleCustomEvent);
+    };
+  }, [handleConcludeActivePage]);
 
   // Navigation handlers
   const handlePageIndexChange = useCallback((index: number) => {
@@ -167,7 +221,7 @@ const DevTools: React.FC = () => {
     console.log('electronAPI available:', !!window.electronAPI);
     console.log('terminalRef.current:', terminalRef.current);
 
-    // Create terminal instance
+    // Create terminal instance with wider dimensions for complex tables
     terminal.current = new Terminal({
       cursorBlink: true,
       theme: {
@@ -175,9 +229,11 @@ const DevTools: React.FC = () => {
         foreground: '#ffffff',
         cursor: '#ffffff',
       },
-      fontSize: 14,
+      fontSize: 12,  // Smaller font to fit more content
       fontFamily: '"Courier New", monospace',
       allowTransparency: false,
+      cols: 140,  // Match PTY width
+      rows: 50,   // Match PTY height
     });
 
     console.log('Terminal instance created:', !!terminal.current);

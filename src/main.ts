@@ -4,8 +4,11 @@ import { fileURLToPath } from 'url';
 import * as pty from 'node-pty';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-import { z } from 'zod';
-import { zodResponseFormat } from 'openai/helpers/zod';
+
+import Groq from "groq-sdk";
+// Removed debug file imports
+
+// Removed zod and zodResponseFormat imports since we're using regular JSON parsing
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +20,11 @@ dotenv.config();
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://api.moonshot.ai/v1",
+});
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_KEY,
 });
 
 // Terminal PTY instance
@@ -24,26 +32,7 @@ let ptyProcess: pty.IPty | null = null;
 
 // No caching in main process - handled on React side
 
-// Zod schema for structured LLM output
-const TableMetadata = z.object({
-  totalRows: z.number().describe("Total number of rows in the table"),
-  dataTypes: z.array(z.string()).describe("Array of data types for each column (e.g., 'string', 'number', 'date')"),
-  sortable: z.boolean().describe("Whether the table data can be meaningfully sorted")
-});
-
-const TableData = z.object({
-  title: z.string().describe("Descriptive title for this table"),
-  description: z.string().describe("Brief description of what this table represents"),
-  headers: z.array(z.string()).describe("Column headers for the table"),
-  rows: z.array(z.array(z.string())).describe("Array of rows, where each row is an array of string values"),
-  metadata: TableMetadata
-});
-
-const AnalysisResponse = z.object({
-  tables: z.array(TableData).describe("Array of extracted tables from the terminal output")
-});
-
-const analysisResponseFormat = zodResponseFormat(AnalysisResponse, "table_analysis");
+// Removed Zod schemas - now using regular JSON parsing with prompt instructions
 
 const createWindow = (): void => {
   const win = new BrowserWindow({
@@ -77,7 +66,7 @@ const createWindow = (): void => {
 // LLM Analysis Function
 async function analyzeTerminalOutput(content: string): Promise<any> {
   try {
-    const prompt = `Analyze the following terminal output and extract any tabular data.
+    const prompt = `Analyze the following terminal output and extract any tabular data. Pay special attention to ASCII/Unicode table formats with box-drawing characters.
 
 Look for structured data patterns such as:
 - File listings (ls, dir commands)
@@ -85,42 +74,81 @@ Look for structured data patterns such as:
 - System information (df, free, lscpu)
 - Log entries with consistent formats
 - Network information (netstat, ifconfig)
+- ASCII tables with Unicode borders (┏━━━┳━━━┓, ┃, │, ┡━━━╇━━━┩, └────┴────┘)
 - Any other data that has a consistent column structure
 
+SPECIAL HANDLING FOR ASCII/UNICODE TABLES:
+- Ignore all border characters: ┏ ━ ┳ ┓ ┃ ┡ ╇ ┩ │ └ ┴ ┘ ┌ ┐ ├ ┤ ┬ ┼ ─ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬ ═
+- Look for headers in the first content row (often between ┃ characters)
+- Each logical table row may span multiple physical lines
+- Combine text that appears in the same column across multiple lines
+- Empty cells should be represented as empty strings ""
+- When text wraps within a cell, join the wrapped parts with a space
+
 For each table found:
-- Create a descriptive title
-- Identify appropriate column headers
-- Extract all rows of data
-- Determine if the data types are primarily strings, numbers, dates, etc.
+- Create a descriptive title based on the content
+- Extract column headers (ignore border decorations)
+- Extract ALL data rows, even if they span multiple lines
+- Handle wrapped text within cells properly
+- Determine appropriate data types
 - Assess if the data would benefit from sorting capabilities
+
+CRITICAL: Make sure to extract ALL rows from the table, not just the first few. Look carefully for continuation patterns where a single logical row spans multiple physical lines.
+
+IMPORTANT: Respond with a valid JSON object in exactly this format:
+{
+  "tables": [
+    {
+      "title": "descriptive title",
+      "description": "brief description",
+      "headers": ["column1", "column2", "..."],
+      "rows": [["value1", "value2", "..."], ["value1", "value2", "..."]],
+      "metadata": {
+        "totalRows": number,
+        "dataTypes": ["string", "number", "..."],
+        "sortable": true/false
+      }
+    }
+  ]
+}
 
 Terminal Output:
 ${content}`;
 
-    console.log('Sending request to OpenAI GPT-4o with structured output...');
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+    console.log('Sending request to Groq (Kimi2) with regular JSON response...');
+    const response = await groq.chat.completions.create({
+      model: 'moonshotai/kimi-k2-instruct',
       messages: [
         {
           role: 'system',
-          content: 'You are a data extraction expert. Analyze terminal output and extract structured tabular data.'
+          content: 'You are a data extraction expert. Analyze terminal output and extract structured tabular data. Always respond with valid JSON only, no additional text.'
         },
         {
           role: 'user',
           content: prompt
         }
       ],
-      response_format: analysisResponseFormat,
-      temperature: 0.1,
+      temperature: 0.8,
     });
 
     const result = response.choices[0]?.message?.content;
     if (!result) {
-      throw new Error('No response from OpenAI');
+      throw new Error('No response from Groq');
     }
 
-    console.log('OpenAI GPT-4o structured response received');
-    const parsedResult = JSON.parse(result);
+    console.log('Groq (Kimi2) response received');
+    
+    // Clean up the response to extract JSON if there's extra text
+    let jsonContent = result.trim();
+    
+    // Remove markdown code blocks if present
+    if (jsonContent.startsWith('```json')) {
+      jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonContent.startsWith('```')) {
+      jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    const parsedResult = JSON.parse(jsonContent);
     console.log('Extracted tables:', parsedResult.tables?.length || 0);
     
     return parsedResult;
@@ -140,13 +168,25 @@ ipcMain.handle('terminal:start', async () => {
   // Determine shell based on platform
   const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
   
-  // Create new PTY process
+  // Create new PTY process with wider terminal for complex tables
   ptyProcess = pty.spawn(shell, [], {
     name: 'xterm-color',
-    cols: 80,
-    rows: 24,
+    cols: 140,  // Much wider for complex tables
+    rows: 50,   // Taller for long output
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      // Ensure commands see the full terminal size
+      COLUMNS: '140',
+      LINES: '50',
+      TERM: 'xterm-256color',
+      // Disable output buffering/pagination
+      PAGER: '',
+      LESS: '',
+      MORE: '',
+    },
+    // Disable flow control to prevent output truncation
+    handleFlowControl: false,
   });
 
   // Send all terminal output to renderer
@@ -185,7 +225,6 @@ ipcMain.handle('llm:analyzeOutput', async (_, pageId: string, content: string) =
   try {
     console.log('Analyzing output for page:', pageId);
     const analysis = await analyzeTerminalOutput(content);
-    
     return analysis;
   } catch (error) {
     console.error('Error in LLM analysis:', error);

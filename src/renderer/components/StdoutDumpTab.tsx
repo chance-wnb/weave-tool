@@ -41,6 +41,21 @@ const StdoutDumpTab: React.FC<StdoutDumpTabProps> = ({
             {hasPages ? `Page ${currentPageIndex + 1} of ${outputPages.length}` : 'No pages yet'}
           </div>
           
+          {/* Manual conclude button for active pages */}
+          {hasPages && currentPage && currentPage.status === 'active' && isOnLatestPage && (
+            <button
+              onClick={() => {
+                // Force conclude the current active page
+                const event = new CustomEvent('concludeActivePage');
+                window.dispatchEvent(event);
+              }}
+              className="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded transition-colors"
+              title="Manually conclude this page to trigger analysis"
+            >
+              🏁 Conclude Page
+            </button>
+          )}
+          
           {hasPages && (
             <div className="flex items-center gap-2">
               {/* Quick navigation buttons */}

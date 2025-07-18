@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -7,7 +7,43 @@ import {
   flexRender,
   createColumnHelper,
   SortingState,
+  ColumnResizeMode,
 } from '@tanstack/react-table';
+
+// Static cache stored at module level - persists across component unmounts
+const staticAnalysisCache = new Map<string, AnalysisResult>();
+const staticLoadingSet = new Set<string>();
+const staticErrorCache = new Map<string, string>();
+
+// Static cache management functions
+const CacheManager = {
+  getAnalysis: (pageId: string) => staticAnalysisCache.get(pageId),
+  setAnalysis: (pageId: string, result: AnalysisResult) => staticAnalysisCache.set(pageId, result),
+  hasAnalysis: (pageId: string) => staticAnalysisCache.has(pageId),
+  
+  isLoading: (pageId: string) => staticLoadingSet.has(pageId),
+  setLoading: (pageId: string) => staticLoadingSet.add(pageId),
+  removeLoading: (pageId: string) => staticLoadingSet.delete(pageId),
+  
+  getError: (pageId: string) => staticErrorCache.get(pageId),
+  setError: (pageId: string, error: string) => staticErrorCache.set(pageId, error),
+  clearError: (pageId: string) => staticErrorCache.delete(pageId),
+  
+  // Optional: Clear all caches (for debugging/reset)
+  clearAll: () => {
+    staticAnalysisCache.clear();
+    staticLoadingSet.clear();
+    staticErrorCache.clear();
+    console.log('🧹 Static analysis cache cleared');
+  },
+  
+  // Optional: Get cache stats
+  getStats: () => ({
+    analysisCount: staticAnalysisCache.size,
+    loadingCount: staticLoadingSet.size,
+    errorCount: staticErrorCache.size
+  })
+};
 
 interface OutputPage {
   id: string;
@@ -44,6 +80,89 @@ interface AuxVisualizationTabProps {
   onGoToLatestPage: () => void;
 }
 
+// Tooltip component for truncated text
+interface TooltipProps {
+  content: string;
+  children: React.ReactNode;
+}
+
+const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 10
+    });
+    setIsVisible(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsVisible(false);
+  };
+
+  return (
+    <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className="relative"
+    >
+      {children}
+      {isVisible && (
+        <div
+          className="fixed z-50 px-2 py-1 text-xs bg-gray-900 text-white border border-gray-600 rounded shadow-lg pointer-events-none"
+          style={{
+            left: position.x,
+            top: position.y,
+            transform: 'translateX(-50%) translateY(-100%)',
+            maxWidth: '300px',
+            wordWrap: 'break-word'
+          }}
+        >
+          {content}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Cell component with truncation and tooltip
+interface TruncatedCellProps {
+  value: string;
+  maxWidth?: number;
+}
+
+const TruncatedCell: React.FC<TruncatedCellProps> = ({ value, maxWidth = 150 }) => {
+  const textRef = useRef<HTMLDivElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useEffect(() => {
+    if (textRef.current) {
+      setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth);
+    }
+  }, [value]);
+
+  const cellContent = (
+    <div
+      ref={textRef}
+      className="truncate"
+      style={{ maxWidth: `${maxWidth}px` }}
+    >
+      {value}
+    </div>
+  );
+
+  return isTruncated ? (
+    <Tooltip content={value}>
+      {cellContent}
+    </Tooltip>
+  ) : (
+    cellContent
+  );
+};
+
 // DataTable component for rendering individual tables
 interface DataTableProps {
   table: TableData;
@@ -52,6 +171,7 @@ interface DataTableProps {
 const DataTable: React.FC<DataTableProps> = ({ table }) => {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
+  const [columnResizeMode, setColumnResizeMode] = useState<ColumnResizeMode>('onChange');
 
   // Convert table data to react-table format
   const data = useMemo(() => {
@@ -64,12 +184,20 @@ const DataTable: React.FC<DataTableProps> = ({ table }) => {
     });
   }, [table.rows, table.headers]);
 
-  // Create columns
+  // Create columns with truncated cells
   const columns = useMemo(() => {
     return table.headers.map(header => ({
       accessorKey: header,
       header: header,
-      cell: (info: any) => info.getValue(),
+      size: 150, // Default column width
+      minSize: 50, // Minimum column width
+      maxSize: 500, // Maximum column width
+      cell: (info: any) => (
+        <TruncatedCell 
+          value={String(info.getValue() || '')} 
+          maxWidth={info.column.getSize() - 24} // Account for padding
+        />
+      ),
     }));
   }, [table.headers]);
 
@@ -85,6 +213,8 @@ const DataTable: React.FC<DataTableProps> = ({ table }) => {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    columnResizeMode,
+    enableColumnResizing: true,
   });
 
   return (
@@ -114,23 +244,49 @@ const DataTable: React.FC<DataTableProps> = ({ table }) => {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table 
+          className="text-xs border-collapse"
+          style={{ width: reactTable.getCenterTotalSize() }}
+        >
           <thead>
             {reactTable.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id} className="border-b border-gray-600">
                 {headerGroup.headers.map(header => (
                   <th
                     key={header.id}
-                    className="text-left py-2 px-3 text-purple-400 font-semibold bg-gray-700 cursor-pointer hover:bg-gray-600 transition-colors"
-                    onClick={header.column.getToggleSortingHandler()}
+                    className="text-left py-2 px-3 text-purple-400 font-semibold bg-gray-700 relative border-r border-gray-600 last:border-r-0"
+                    style={{ 
+                      width: header.getSize(),
+                      position: 'relative'
+                    }}
                   >
-                    <div className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {{
-                        asc: ' 🔼',
-                        desc: ' 🔽',
-                      }[header.column.getIsSorted() as string] ?? ' ↕️'}
+                    <div 
+                      className="flex items-center gap-1 cursor-pointer hover:bg-gray-600 transition-colors p-1 -m-1 rounded"
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <span className="truncate">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </span>
+                      <span className="text-xs opacity-60">
+                        {{
+                          asc: '🔼',
+                          desc: '🔽',
+                        }[header.column.getIsSorted() as string] ?? '↕️'}
+                      </span>
                     </div>
+                    
+                    {/* Resize Handle */}
+                    {header.column.getCanResize() && (
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        className="absolute right-0 top-0 h-full w-1 bg-gray-500 opacity-0 hover:opacity-100 cursor-col-resize transition-opacity"
+                        style={{
+                          transform: header.column.getIsResizing() ? 'scaleX(2)' : 'scaleX(1)',
+                          backgroundColor: header.column.getIsResizing() ? '#3b82f6' : '#6b7280'
+                        }}
+                      />
+                    )}
                   </th>
                 ))}
               </tr>
@@ -145,7 +301,11 @@ const DataTable: React.FC<DataTableProps> = ({ table }) => {
                 }`}
               >
                 {row.getVisibleCells().map(cell => (
-                  <td key={cell.id} className="py-2 px-3 text-gray-300">
+                  <td 
+                    key={cell.id} 
+                    className="py-2 px-3 text-gray-300 border-r border-gray-700 last:border-r-0"
+                    style={{ width: cell.column.getSize() }}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -178,66 +338,65 @@ const AuxVisualizationTab: React.FC<AuxVisualizationTabProps> = ({
   const currentPage = outputPages[currentPageIndex];
   const isOnLatestPage = currentPageIndex === outputPages.length - 1;
 
-  // LLM Analysis State
-  const [analysisResults, setAnalysisResults] = useState<Map<string, AnalysisResult>>(new Map());
-  const [loadingAnalysis, setLoadingAnalysis] = useState<Set<string>>(new Set());
-  const [analysisErrors, setAnalysisErrors] = useState<Map<string, string>>(new Map());
+  // Force re-render when static cache changes (since static cache doesn't trigger React updates)
+  const [cacheVersion, setCacheVersion] = useState(0);
+  const forceUpdate = () => setCacheVersion(prev => prev + 1);
 
-  // Analyze concluded pages with LLM
+  // Log cache stats on mount to demonstrate persistence across tab switches
+  useEffect(() => {
+    const stats = CacheManager.getStats();
+    console.log('📊 AuxVisualizationTab mounted - Static cache stats:', stats);
+  }, []);
+
+  // Analyze concluded pages with LLM using static cache
   useEffect(() => {
     if (!currentPage || currentPage.status !== 'concluded' || !currentPage.content.trim()) {
       return;
     }
 
-    // Check React-side cache first - if we already have analysis or are currently analyzing
-    if (analysisResults.has(currentPage.id) || loadingAnalysis.has(currentPage.id)) {
+    // Check static cache - if we already have analysis or are currently analyzing
+    if (CacheManager.hasAnalysis(currentPage.id) || CacheManager.isLoading(currentPage.id)) {
       return;
     }
 
     // Start analysis
     const analyzeCurrentPage = async () => {
       try {
-        console.log('Starting LLM analysis for page (React-side cache miss):', currentPage.id);
+        console.log('Starting LLM analysis for page (static cache miss):', currentPage.id);
         
-        // Mark as loading
-        setLoadingAnalysis(prev => new Set(prev).add(currentPage.id));
-        setAnalysisErrors(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(currentPage.id);
-          return newMap;
-        });
+        // Mark as loading in static cache
+        CacheManager.setLoading(currentPage.id);
+        CacheManager.clearError(currentPage.id);
+        forceUpdate(); // Trigger re-render
 
         // Call LLM analysis (main process does the actual API call)
         const result = await window.electronAPI.analyzeOutput(currentPage.id, currentPage.content);
         
-        console.log('LLM analysis result received and cached:', result);
+        console.log('LLM analysis result received and cached in static storage:', result);
 
-        // Store result in React-side cache
-        setAnalysisResults(prev => new Map(prev).set(currentPage.id, result));
+        // Store result in static cache
+        CacheManager.setAnalysis(currentPage.id, result);
         
       } catch (error) {
         console.error('Failed to analyze page:', error);
-        setAnalysisErrors(prev => new Map(prev).set(
+        CacheManager.setError(
           currentPage.id, 
           error instanceof Error ? error.message : 'Analysis failed'
-        ));
+        );
       } finally {
-        // Remove from loading
-        setLoadingAnalysis(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(currentPage.id);
-          return newSet;
-        });
+        // Remove from loading in static cache
+        CacheManager.removeLoading(currentPage.id);
+        forceUpdate(); // Trigger re-render
       }
     };
 
     analyzeCurrentPage();
-  }, [currentPage?.id, currentPage?.status, currentPage?.content]);
+  }, [currentPage?.id, currentPage?.status, currentPage?.content, cacheVersion]);
 
-  // Get current analysis state
-  const currentAnalysis = currentPage ? analysisResults.get(currentPage.id) : null;
-  const isAnalyzing = currentPage ? loadingAnalysis.has(currentPage.id) : false;
-  const analysisError = currentPage ? analysisErrors.get(currentPage.id) : null;
+  // Get current analysis state from static cache
+  const currentAnalysis = currentPage ? CacheManager.getAnalysis(currentPage.id) : null;
+  const isAnalyzing = currentPage ? CacheManager.isLoading(currentPage.id) : false;
+  const analysisError = currentPage ? CacheManager.getError(currentPage.id) : null;
 
   return (
     <div className="h-full p-4 flex flex-col">
@@ -387,7 +546,7 @@ const AuxVisualizationTab: React.FC<AuxVisualizationTabProps> = ({
                 {/* Tables from LLM Analysis */}
                 {currentAnalysis && currentAnalysis.tables && currentAnalysis.tables.length > 0 ? (
                   <div className="flex-1 space-y-6 overflow-auto">
-                    {currentAnalysis.tables.map((table, index) => (
+                    {currentAnalysis.tables.map((table: TableData, index: number) => (
                       <DataTable key={index} table={table} />
                     ))}
                   </div>
