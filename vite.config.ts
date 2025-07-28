@@ -52,7 +52,9 @@ export default defineConfig(({ mode }) => {
             'os',
             'crypto',
             'util',
-            'events'
+            'events',
+            'sqlite3',
+            'keytar'
           ],
         },
       },

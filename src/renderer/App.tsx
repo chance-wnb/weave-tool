@@ -2,6 +2,7 @@ import {
   Bars3Icon,
   ChartBarIcon,
   CommandLineIcon,
+  KeyIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import React, { useEffect, useState } from 'react';
@@ -10,6 +11,7 @@ import { useFullscreen } from './contexts/FullscreenContext';
 // Import page components
 import Dashboard from './pages/Dashboard';
 import DevTools from './pages/DevTools';
+import CookieFixerTab from './components/CookieFixerTab';
 
 interface MenuItem {
   key: string;
@@ -30,6 +32,12 @@ const menuItems: MenuItem[] = [
     icon: CommandLineIcon,
     label: 'DevTools',
     component: <DevTools />,
+  },
+  {
+    key: 'cookiefixer',
+    icon: KeyIcon,
+    label: 'Cookie Fixer',
+    component: <CookieFixerTab />,
   },
   // {
   //   key: 'files',

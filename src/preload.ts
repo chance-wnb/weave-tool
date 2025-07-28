@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // LLM Analysis
   analyzeOutput: (pageId: string, content: string) => ipcRenderer.invoke('llm:analyzeOutput', pageId, content),
+  
+  // Chrome Cookies
+  getChromeCookies: (domain: string) => ipcRenderer.invoke('chrome:getCookies', domain),
 });
 
 // Type declaration for the exposed API
@@ -36,6 +39,7 @@ declare global {
       onTerminalExit: (callback: (exitCode: number) => void) => () => void;
       killTerminal: () => Promise<void>;
       analyzeOutput: (pageId: string, content: string) => Promise<any>;
+      getChromeCookies: (domain: string) => Promise<{ success: boolean; cookies?: any[]; error?: string }>;
     }
   }
 } 

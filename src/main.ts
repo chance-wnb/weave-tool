@@ -4,6 +4,10 @@ import { fileURLToPath } from 'url';
 import * as pty from 'node-pty';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as os from 'os';
+// We'll dynamically import sqlite3 when needed
+import * as crypto from 'crypto';
 
 import Groq from "groq-sdk";
 
@@ -17,7 +21,6 @@ dotenv.config();
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "https://api.moonshot.ai/v1",
 });
 
 const groq = new Groq({
@@ -30,6 +33,210 @@ let ptyProcess: pty.IPty | null = null;
 // No caching in main process - handled on React side
 
 // Removed Zod schemas - now using regular JSON parsing with prompt instructions
+
+// Chrome Cookie Reading Functions (adapted from devtools)
+interface Cookie {
+  name: string;
+  value: string;
+  domain: string;
+}
+
+async function getChromeCookieDbPath(): Promise<string | null> {
+  const homeDir = os.homedir();
+  const chromeProfilePath = join(homeDir, 'Library', 'Application Support', 'Google', 'Chrome');
+  
+  if (!fs.existsSync(chromeProfilePath)) {
+    return null;
+  }
+  
+  // Try Default profile first, then Profile 0, Profile 1, etc.
+  const profilePaths = ['Default'];
+  const profileDirs = fs.readdirSync(chromeProfilePath)
+    .filter(dir => dir.startsWith('Profile'))
+    .sort();
+  
+  profilePaths.push(...profileDirs);
+  
+  for (const profile of profilePaths) {
+    const cookiesPath = join(chromeProfilePath, profile, 'Cookies');
+    if (fs.existsSync(cookiesPath)) {
+      return cookiesPath;
+    }
+  }
+  
+  return null;
+}
+
+async function getChromeEncryptionKey(): Promise<Buffer | null> {
+  try {
+    let password = 'peanuts'; // Chrome's fallback password on macOS
+    
+    // Try to get the password from macOS keychain
+    try {
+      const keytar = await import('keytar');
+      const keychainPassword = await keytar.getPassword('Chrome Safe Storage', 'Chrome');
+      if (keychainPassword) {
+        password = keychainPassword;
+        console.log('Got Chrome password from keychain');
+      } else {
+        console.log('No Chrome password found in keychain, using fallback');
+      }
+    } catch (keychainError) {
+      console.log('Could not access keychain, using fallback password:', keychainError.message);
+    }
+    
+    const salt = Buffer.from('saltysalt', 'utf8');
+    const iterations = 1003;
+    const keyLength = 16;
+    
+    // Use PBKDF2 to derive the key
+    const key = crypto.pbkdf2Sync(password, salt, iterations, keyLength, 'sha1');
+    console.log('Generated encryption key with password length:', password.length);
+    return key;
+  } catch (error) {
+    console.error('Error getting Chrome encryption key:', error);
+    return null;
+  }
+}
+
+function decryptChromeValue(encryptedValue: Buffer, key: Buffer): string {
+  try {
+    if (encryptedValue.length === 0) {
+      return '';
+    }
+    
+    // Chrome cookies are encrypted with AES-128-CBC
+    // The first 3 bytes are version info ('v10' or 'v11')
+    const version = encryptedValue.subarray(0, 3).toString('latin1');
+    
+    if (version !== 'v10' && version !== 'v11') {
+      // Try to return as plain text if not encrypted
+      return encryptedValue.toString('utf8');
+    }
+    
+    // Remove version prefix
+    const encrypted = encryptedValue.subarray(3);
+    
+    // IV is 16 bytes of spaces for Chrome on macOS
+    const iv = Buffer.alloc(16, ' ');
+    
+    try {
+      const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+      decipher.setAutoPadding(true); // Let Node.js handle padding
+      
+      let decrypted = decipher.update(encrypted);
+      const final = decipher.final();
+      decrypted = Buffer.concat([decrypted, final]);
+      
+      const result = decrypted.toString('utf8');
+      console.log('Decrypted result:', result.substring(0, 50));
+      return result;
+    } catch (decryptError) {
+      console.error('Decryption failed:', decryptError);
+      // Try with manual padding handling
+      try {
+        const decipher2 = crypto.createDecipheriv('aes-128-cbc', key, iv);
+        decipher2.setAutoPadding(false);
+        
+        let decrypted2 = decipher2.update(encrypted);
+        const final2 = decipher2.final();
+        decrypted2 = Buffer.concat([decrypted2, final2]);
+        
+        // Remove PKCS7 padding manually
+        const paddingLength = decrypted2[decrypted2.length - 1];
+        if (paddingLength && paddingLength <= 16 && paddingLength <= decrypted2.length) {
+          decrypted2 = decrypted2.subarray(0, decrypted2.length - paddingLength);
+        }
+        
+        const result2 = decrypted2.toString('utf8');
+        console.log('Manual padding result:', result2.substring(0, 50));
+        return result2;
+      } catch (manualError) {
+        console.error('Manual padding also failed:', manualError);
+        return '';
+      }
+    }
+  } catch (error) {
+    console.error('Error decrypting Chrome cookie:', error);
+    return '';
+  }
+}
+
+async function getChromeCookies(domain: string): Promise<{ success: boolean; cookies?: Cookie[]; error?: string }> {
+  try {
+    // Dynamic import of sqlite3
+    const sqlite3 = await import('sqlite3');
+    
+    const cookieDbPath = await getChromeCookieDbPath();
+    if (!cookieDbPath) {
+      return { success: false, error: 'Chrome cookie database not found. Make sure Chrome is installed and you have used it at least once.' };
+    }
+    
+    const encryptionKey = await getChromeEncryptionKey();
+    if (!encryptionKey) {
+      return { success: false, error: 'Failed to get Chrome encryption key' };
+    }
+    
+    // Copy the database to a temp location to avoid lock issues
+    const tempDbPath = join(os.tmpdir(), `chrome_cookies_${Date.now()}.db`);
+    fs.copyFileSync(cookieDbPath, tempDbPath);
+    
+    return new Promise((resolve) => {
+      const db = new sqlite3.default.Database(tempDbPath, sqlite3.default.OPEN_READONLY, (err: any) => {
+        if (err) {
+          resolve({ success: false, error: `Failed to open Chrome cookie database: ${err.message}` });
+          return;
+        }
+        
+        const query = `SELECT name, value, encrypted_value, host_key FROM cookies WHERE host_key LIKE ?`;
+        const domainPattern = `%${domain}%`;
+        
+        db.all(query, [domainPattern], (err: any, rows: any[]) => {
+          db.close();
+          
+          // Clean up temp file
+          try {
+            fs.unlinkSync(tempDbPath);
+          } catch (cleanupErr) {
+            console.warn('Failed to clean up temp database file:', cleanupErr);
+          }
+          
+          if (err) {
+            resolve({ success: false, error: `Database query failed: ${err.message}` });
+            return;
+          }
+          
+          const cookies: Cookie[] = rows.map(row => {
+            let value = row.value;
+            
+            // If value is empty and we have encrypted_value, try to decrypt it
+            if (!value && row.encrypted_value && row.encrypted_value.length > 0) {
+              const encryptedBuffer = Buffer.isBuffer(row.encrypted_value) 
+                ? row.encrypted_value 
+                : Buffer.from(row.encrypted_value);
+              console.log(`Decrypting cookie: ${row.name}`);
+              value = decryptChromeValue(encryptedBuffer, encryptionKey);
+              console.log(`Decrypted to: ${value ? value.substring(0, 20) + '...' : 'EMPTY'}`);
+            }
+            
+            return {
+              name: row.name,
+              value: value || '',
+              domain: row.host_key
+            };
+          }).filter(cookie => cookie.value); // Only return cookies with values
+          
+          resolve({ success: true, cookies });
+        });
+      });
+    });
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    };
+  }
+}
 
 const createWindow = (): void => {
   const win = new BrowserWindow({
@@ -127,6 +334,7 @@ ${content}`;
       ],
       temperature: 0.8,
     });
+
 
     const result = response.choices[0]?.message?.content;
     if (!result) {
@@ -229,6 +437,21 @@ ipcMain.handle('llm:analyzeOutput', async (_, pageId: string, content: string) =
       error: true,
       message: error instanceof Error ? error.message : 'Unknown error occurred',
       tables: []
+    };
+  }
+});
+
+// Chrome Cookies IPC Handler
+ipcMain.handle('chrome:getCookies', async (_, domain: string) => {
+  try {
+    console.log('Getting Chrome cookies for domain:', domain);
+    const result = await getChromeCookies(domain);
+    return result;
+  } catch (error) {
+    console.error('Error getting Chrome cookies:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
 });
